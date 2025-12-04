@@ -86,6 +86,8 @@ export async function POST(req: Request) {
 
     let inputTokens: number;
     let outputTokens: number;
+    let tokenSource: string;
+    
     if (
       lastMessage.usage &&
       lastMessage.usage.prompt_tokens &&
@@ -93,13 +95,26 @@ export async function POST(req: Request) {
     ) {
       inputTokens = lastMessage.usage.prompt_tokens;
       outputTokens = lastMessage.usage.completion_tokens;
+      tokenSource = "LLM_USAGE";
+      console.log(`[Outlet] Token source: LLM usage data (prompt: ${inputTokens}, completion: ${outputTokens})`);
     } else {
+      console.log(`[Outlet] No usage data from LLM, falling back to tokenization...`);
+      console.log(`[Outlet] lastMessage.usage:`, JSON.stringify(lastMessage.usage || null));
+      
+      const startTime = Date.now();
+      const totalChars = data.body.messages.reduce((sum: number, msg: Message) => sum + (msg.content?.length || 0), 0);
+      console.log(`[Outlet] Total chars to tokenize: ${totalChars}`);
+      
       outputTokens = encode(lastMessage.content).length;
       const totalTokens = data.body.messages.reduce(
         (sum: number, msg: Message) => sum + encode(msg.content).length,
         0
       );
       inputTokens = totalTokens - outputTokens;
+      tokenSource = "TOKENIZER";
+      
+      const elapsed = Date.now() - startTime;
+      console.log(`[Outlet] Tokenization completed in ${elapsed}ms (${totalChars} chars -> ${totalTokens} tokens)`);
     }
 
     let totalCost: number;
