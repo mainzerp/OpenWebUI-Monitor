@@ -1,31 +1,47 @@
-import { resetAllBalancesToDefault, getLastResetDate, updateLastResetDate } from "@/lib/db/users";
+import {
+  getLastResetDate,
+  resetAllBalancesToDefault,
+  updateLastResetDate,
+} from "@/lib/db/users";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let isInitialized = false;
 
 // Get the configured reset day from environment (1-31), default is 1 (first of month)
-function getResetDay(): number {
+export function getConfiguredResetDay(): number {
   const day = parseInt(process.env.BALANCE_RESET_DAY || "1", 10);
   return Math.min(Math.max(day, 1), 31);
 }
 
 // Check if auto-reset is enabled (BALANCE_RESET_DAY > 0)
-function isAutoResetEnabled(): boolean {
+export function isAutoResetEnabled(): boolean {
   const day = parseInt(process.env.BALANCE_RESET_DAY || "1", 10);
   return day > 0;
 }
 
-// Check if today is the reset day and if reset hasn't been done this month
-async function shouldAutoReset(): Promise<boolean> {
+// Effective reset day for the given month (handles months shorter than configured day)
+export function getEffectiveResetDay(date = new Date()): number {
+  const configured = getConfiguredResetDay();
+  const lastDayOfMonth = new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    0
+  ).getDate();
+
+  return Math.min(configured, lastDayOfMonth);
+}
+
+// Check if we should reset now (also catches up if the reset day was missed)
+export async function shouldAutoResetNow(date = new Date()): Promise<boolean> {
   if (!isAutoResetEnabled()) {
     return false;
   }
 
-  const resetDay = getResetDay();
-  const today = new Date();
-  const currentDay = today.getDate();
+  const resetDay = getEffectiveResetDay(date);
+  const currentDay = date.getDate();
 
-  if (currentDay !== resetDay) {
+  // Don't reset before the configured day for this month
+  if (currentDay < resetDay) {
     return false;
   }
 
@@ -34,8 +50,8 @@ async function shouldAutoReset(): Promise<boolean> {
   if (lastReset) {
     const lastResetMonth = lastReset.getMonth();
     const lastResetYear = lastReset.getFullYear();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
+    const currentMonth = date.getMonth();
+    const currentYear = date.getFullYear();
 
     // Already reset this month
     if (lastResetMonth === currentMonth && lastResetYear === currentYear) {
@@ -49,10 +65,17 @@ async function shouldAutoReset(): Promise<boolean> {
 // Perform the automatic reset check
 async function checkAndReset(): Promise<void> {
   try {
-    const shouldReset = await shouldAutoReset();
+    const now = new Date();
+    const shouldReset = await shouldAutoResetNow(now);
     
     if (shouldReset) {
-      console.log(`[Scheduler] Reset day reached. Resetting all balances to default...`);
+      const configured = getConfiguredResetDay();
+      const effective = getEffectiveResetDay(now);
+      const currentDay = now.getDate();
+      const note = currentDay === effective ? "reset day" : "catch-up";
+      console.log(
+        `[Scheduler] ${note} triggered (configured=${configured}, effective=${effective}, today=${currentDay}). Resetting all balances to default...`
+      );
       const count = await resetAllBalancesToDefault();
       await updateLastResetDate();
       console.log(`[Scheduler] Successfully reset balances for ${count} users.`);
@@ -74,8 +97,11 @@ export function initScheduler(): void {
     return;
   }
 
-  const resetDay = getResetDay();
-  console.log(`[Scheduler] Initializing with reset day: ${resetDay}`);
+  const configured = getConfiguredResetDay();
+  const effective = getEffectiveResetDay(new Date());
+  console.log(
+    `[Scheduler] Initializing (configured reset day: ${configured}, effective this month: ${effective})`
+  );
 
   // Check immediately on startup
   checkAndReset();
@@ -101,11 +127,13 @@ export function stopScheduler(): void {
 export function getSchedulerStatus(): {
   enabled: boolean;
   resetDay: number;
+  effectiveResetDay: number;
   isRunning: boolean;
 } {
   return {
     enabled: isAutoResetEnabled(),
-    resetDay: getResetDay(),
+    resetDay: getConfiguredResetDay(),
+    effectiveResetDay: getEffectiveResetDay(new Date()),
     isRunning: isInitialized,
   };
 }

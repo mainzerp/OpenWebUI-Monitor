@@ -4,6 +4,7 @@ import { Pool, PoolClient } from "pg";
 import { createClient } from "@vercel/postgres";
 import { query, getClient } from "@/lib/db/client";
 import { getModelInletCost } from "@/lib/utils/inlet-cost";
+import { ensureRuntimeInitialized } from "@/lib/runtime";
 
 const isVercel = process.env.VERCEL === "1";
 
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
   let pgClient: DbClient | null = null;
 
   try {
+    ensureRuntimeInitialized();
     if (isVercel) {
       pgClient = client;
     } else {
@@ -103,18 +105,33 @@ export async function POST(req: Request) {
       
       const startTime = Date.now();
       const totalChars = data.body.messages.reduce((sum: number, msg: Message) => sum + (msg.content?.length || 0), 0);
+      const outputChars = lastMessage.content?.length || 0;
       console.log(`[Outlet] Total chars to tokenize: ${totalChars}`);
       
-      outputTokens = encode(lastMessage.content).length;
-      const totalTokens = data.body.messages.reduce(
-        (sum: number, msg: Message) => sum + encode(msg.content).length,
-        0
-      );
-      inputTokens = totalTokens - outputTokens;
-      tokenSource = "TOKENIZER";
+      // For large inputs (>50k chars), use estimation instead of tokenization
+      // Tokenization can take minutes for very large texts and cause timeouts
+      const CHAR_LIMIT_FOR_ESTIMATION = 50000;
+      const CHARS_PER_TOKEN = 4; // Approximate ratio for English/code
       
-      const elapsed = Date.now() - startTime;
-      console.log(`[Outlet] Tokenization completed in ${elapsed}ms (${totalChars} chars -> ${totalTokens} tokens)`);
+      if (totalChars > CHAR_LIMIT_FOR_ESTIMATION) {
+        // Use fast estimation: ~4 characters per token
+        const totalTokens = Math.ceil(totalChars / CHARS_PER_TOKEN);
+        outputTokens = Math.ceil(outputChars / CHARS_PER_TOKEN);
+        inputTokens = totalTokens - outputTokens;
+        tokenSource = "ESTIMATION";
+        console.log(`[Outlet] Large input detected (${totalChars} chars), using estimation: ${totalTokens} tokens`);
+      } else {
+        outputTokens = encode(lastMessage.content).length;
+        const totalTokens = data.body.messages.reduce(
+          (sum: number, msg: Message) => sum + encode(msg.content).length,
+          0
+        );
+        inputTokens = totalTokens - outputTokens;
+        tokenSource = "TOKENIZER";
+        
+        const elapsed = Date.now() - startTime;
+        console.log(`[Outlet] Tokenization completed in ${elapsed}ms (${totalChars} chars -> ${totalTokens} tokens)`);
+      }
     }
 
     let totalCost: number;

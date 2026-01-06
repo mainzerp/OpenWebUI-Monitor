@@ -2,7 +2,7 @@
 title: Usage Monitor
 author: VariantConst & OVINC CN
 git_url: https://github.com/VariantConst/OpenWebUI-Monitor.git
-version: 0.3.6
+version: 0.3.8
 requirements: httpx
 license: MIT
 """
@@ -10,7 +10,7 @@ license: MIT
 import logging
 import time
 from typing import Dict, Optional
-from httpx import AsyncClient
+from httpx import AsyncClient, Timeout
 from pydantic import BaseModel, Field
 import json
 
@@ -85,7 +85,8 @@ class Filter:
         self.start_time = time.time()
         user_id = __user__.get("id", "default")
 
-        client = AsyncClient()
+        # Extended timeout for large requests (30 seconds)
+        client = AsyncClient(timeout=Timeout(30.0))
 
         try:
             response_data = await self.request(
@@ -100,11 +101,13 @@ class Filter:
                 raise CustomException(self.get_text("insufficient_balance", balance=response_data.get("balance", 0)))
             return body
 
+        except CustomException:
+            # Re-raise balance errors - these should block the request
+            raise
         except Exception as err:
-            logger.exception(self.get_text("request_failed", error_msg=err))
-            if isinstance(err, CustomException):
-                raise err
-            raise Exception(f"error calculating usage, {err}") from err
+            # Log other errors but don't block OpenWebUI
+            logger.exception(f"[Monitor] inlet error (non-blocking): {err}")
+            return body
 
         finally:
             await client.aclose()
@@ -123,7 +126,8 @@ class Filter:
         if self.outage_map.get(user_id, False):
             return body
 
-        client = AsyncClient()
+        # Extended timeout for large requests (30 seconds)
+        client = AsyncClient(timeout=Timeout(30.0))
 
         try:
             response_data = await self.request(
@@ -155,7 +159,8 @@ class Filter:
             return body
 
         except Exception as err:
-            logger.exception(self.get_text("request_failed", error_msg=err))
-            raise Exception(self.get_text("request_failed", error_msg=err))
+            # Log errors but don't block OpenWebUI
+            logger.exception(f"[Monitor] outlet error (non-blocking): {err}")
+            return body
         finally:
             await client.aclose()
