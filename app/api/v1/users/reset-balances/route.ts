@@ -1,40 +1,8 @@
 import { NextResponse } from "next/server";
 import { verifyApiToken } from "@/lib/auth";
 import { resetAllBalancesToDefault, resetUserBalanceToDefault, getLastResetDate, updateLastResetDate } from "@/lib/db/users";
-import { getSchedulerStatus } from "@/lib/scheduler";
-
-// Get the configured reset day from environment (1-31), default is 1 (first of month)
-function getResetDay(): number {
-  const day = parseInt(process.env.BALANCE_RESET_DAY || "1", 10);
-  return Math.min(Math.max(day, 1), 31); // Clamp between 1 and 31
-}
-
-// Check if today is the reset day and if reset hasn't been done this month
-async function shouldAutoReset(): Promise<boolean> {
-  const resetDay = getResetDay();
-  const today = new Date();
-  const currentDay = today.getDate();
-  
-  if (currentDay !== resetDay) {
-    return false;
-  }
-  
-  // Check if we already reset this month
-  const lastReset = await getLastResetDate();
-  if (lastReset) {
-    const lastResetMonth = lastReset.getMonth();
-    const lastResetYear = lastReset.getFullYear();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    
-    // Already reset this month
-    if (lastResetMonth === currentMonth && lastResetYear === currentYear) {
-      return false;
-    }
-  }
-  
-  return true;
-}
+import { getConfiguredResetDay, getEffectiveResetDay, getSchedulerStatus, shouldAutoResetNow } from "@/lib/scheduler";
+import { ensureRuntimeInitialized } from "@/lib/runtime";
 
 // GET: Check reset status and configuration
 export async function GET(req: Request) {
@@ -44,14 +12,17 @@ export async function GET(req: Request) {
   }
 
   try {
-    const resetDay = getResetDay();
+    ensureRuntimeInitialized();
+    const resetDay = getConfiguredResetDay();
+    const effectiveResetDay = getEffectiveResetDay(new Date());
     const lastReset = await getLastResetDate();
-    const shouldReset = await shouldAutoReset();
+    const shouldReset = await shouldAutoResetNow(new Date());
     const schedulerStatus = getSchedulerStatus();
     
     return NextResponse.json({
       success: true,
       reset_day: resetDay,
+      effective_reset_day: effectiveResetDay,
       last_reset: lastReset?.toISOString() || null,
       should_reset_today: shouldReset,
       scheduler: schedulerStatus,
@@ -73,6 +44,7 @@ export async function POST(req: Request) {
   }
 
   try {
+    ensureRuntimeInitialized();
     const body = await req.json().catch(() => ({}));
     const { userId, force } = body;
 
@@ -87,14 +59,16 @@ export async function POST(req: Request) {
     } else {
       // Check if auto-reset should happen (unless forced)
       if (!force) {
-        const shouldReset = await shouldAutoReset();
+        const shouldReset = await shouldAutoResetNow(new Date());
         if (!shouldReset) {
-          const resetDay = getResetDay();
+          const resetDay = getConfiguredResetDay();
+          const effectiveResetDay = getEffectiveResetDay(new Date());
           const lastReset = await getLastResetDate();
           return NextResponse.json({
             success: false,
-            message: `Reset not needed. Reset day is ${resetDay}, last reset was ${lastReset?.toISOString() || 'never'}`,
+            message: `Reset not needed. Reset day is ${resetDay} (effective this month: ${effectiveResetDay}), last reset was ${lastReset?.toISOString() || 'never'}`,
             reset_day: resetDay,
+            effective_reset_day: effectiveResetDay,
             last_reset: lastReset?.toISOString() || null,
           });
         }

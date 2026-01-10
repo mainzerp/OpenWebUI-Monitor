@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { getOrCreateUser } from "@/lib/db/users";
 import { query } from "@/lib/db/client";
 import { getModelInletCost } from "@/lib/utils/inlet-cost";
+import { ensureRuntimeInitialized } from "@/lib/runtime";
 
 export async function POST(req: Request) {
   try {
+    ensureRuntimeInitialized();
     const data = await req.json();
     const user = await getOrCreateUser(data.user);
     const modelId = data.body?.model;
