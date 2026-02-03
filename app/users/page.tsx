@@ -32,6 +32,7 @@ interface User {
     name: string
     role: string
     balance: number
+    default_balance: number
     deleted: boolean
 }
 
@@ -304,6 +305,7 @@ export default function UsersPage() {
     const [total, setTotal] = useState(0)
     const [currentPage, setCurrentPage] = useState(1)
     const [editingKey, setEditingKey] = useState<string>('')
+    const [editingDefaultKey, setEditingDefaultKey] = useState<string>('')
     const [selectedUser, setSelectedUser] = useState<User | null>(null)
     const [userToDelete, setUserToDelete] = useState<User | null>(null)
     const [sortInfo, setSortInfo] = useState<{
@@ -426,6 +428,53 @@ export default function UsersPage() {
                 err instanceof Error
                     ? err.message
                     : t('users.message.updateBalance.error')
+            )
+        }
+    }
+
+    const handleUpdateDefaultBalance = async (userId: string, newDefaultBalance: number) => {
+        try {
+            console.log(`Updating default_balance for user ${userId} to ${newDefaultBalance}`)
+
+            const token = localStorage.getItem('access_token')
+            if (!token) {
+                throw new Error(t('auth.unauthorized'))
+            }
+
+            const res = await fetch(`/api/v1/users/${userId}/default-balance`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ default_balance: newDefaultBalance }),
+            })
+
+            const data = await res.json()
+            console.log('Update default_balance response:', data)
+
+            if (!res.ok) {
+                throw new Error(
+                    data.error || t('users.message.updateDefaultBalance.error')
+                )
+            }
+
+            setUsers(
+                users.map((user) =>
+                    user.id === userId ? { ...user, default_balance: newDefaultBalance } : user
+                )
+            )
+
+            toast.success(t('users.message.updateDefaultBalance.success'))
+            setEditingDefaultKey('')
+
+            fetchUsers(currentPage, false)
+        } catch (err) {
+            console.error('Failed to update default_balance:', err)
+            toast.error(
+                err instanceof Error
+                    ? err.message
+                    : t('users.message.updateDefaultBalance.error')
             )
         }
     }
@@ -669,6 +718,42 @@ export default function UsersPage() {
                 },
             },
             {
+                title: t('users.defaultBalance'),
+                dataIndex: 'default_balance',
+                key: 'default_balance',
+                width: '35%',
+                align: 'left',
+                sorter: {
+                    compare: (a, b) => a.default_balance - b.default_balance,
+                    multiple: 2,
+                },
+                render: (default_balance: number, record) => {
+                    const isEditing = record.id === editingDefaultKey
+
+                    return (
+                        <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                                <EditableCell
+                                    value={default_balance}
+                                    isEditing={isEditing}
+                                    onEdit={() => setEditingDefaultKey(record.id)}
+                                    onSubmit={(value) =>
+                                        handleUpdateDefaultBalance(record.id, value)
+                                    }
+                                    onCancel={() => setEditingDefaultKey('')}
+                                    t={t}
+                                    validateValue={(value) => ({
+                                        isValid: isFinite(value),
+                                        errorMessage: t('error.invalidNumber'),
+                                        maxValue: 999999.9999,
+                                    })}
+                                />
+                            </div>
+                        </div>
+                    )
+                },
+            },
+            {
                 title: t('users.actions'),
                 key: 'actions',
                 width: '48px',
@@ -877,7 +962,8 @@ export default function UsersPage() {
                                 .map((user) => ({
                                     key: user.id,
                                     ...user,
-                                    balance: Number(user.balance),
+                                    balance: Number(user.balance ?? 0),
+                                    default_balance: Number(user.default_balance ?? 0),
                                 }))}
                             rowKey="id"
                             loading={false}
@@ -899,10 +985,10 @@ export default function UsersPage() {
                             }}
                             scroll={{ x: 500 }}
                             onChange={(pagination, filters, sorter) => {
-                                if (Array.isArray(sorter)) return
+                                const resolvedSorter = Array.isArray(sorter) ? sorter.find((item) => item.order) : sorter
                                 setSortInfo({
-                                    field: sorter.columnKey as string,
-                                    order: sorter.order || null,
+                                    field: resolvedSorter?.columnKey ? String(resolvedSorter.columnKey) : null,
+                                    order: resolvedSorter?.order ?? null,
                                 })
                             }}
                         />
@@ -964,7 +1050,8 @@ export default function UsersPage() {
                                             (user) => ({
                                                 key: user.id,
                                                 ...user,
-                                                balance: Number(user.balance),
+                                                balance: Number(user.balance ?? 0),
+                                                default_balance: Number(user.default_balance ?? 0),
                                             })
                                         )}
                                         rowKey="id"

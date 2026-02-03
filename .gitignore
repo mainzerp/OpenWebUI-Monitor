@@ -40,3 +40,24 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# python
+__pycache__/
+*.pyc
+
+# AI Assistant Documentation (private)
+CLAUDE.md
+ha_domains_complete_reference.md
+DOMAIN_REGISTRY.md
+project-definition.md
+copilot-instructions.md
+VERSION.md
+
+# Internal docs (development notes, not for public)
+docs/
+instructions/
+test/
+temp/
+
+# Subagent documentation
+SubAgent docs/
