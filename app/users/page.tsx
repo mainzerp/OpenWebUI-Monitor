@@ -976,7 +976,8 @@ export default function UsersPage() {
                 .map((user) => ({
                   key: user.id,
                   ...user,
-                  balance: Number(user.balance),
+                  balance: Number(user.balance ?? 0),
+                  default_balance: Number(user.default_balance ?? 0),
                 }))}
               rowKey="id"
               loading={false}
@@ -997,10 +998,15 @@ export default function UsersPage() {
               }}
               scroll={{ x: 500 }}
               onChange={(pagination, filters, sorter) => {
-                if (Array.isArray(sorter)) return;
+                const resolvedSorter = Array.isArray(sorter)
+                  ? sorter.find((item) => item.order)
+                  : sorter;
+
                 setSortInfo({
-                  field: sorter.columnKey as string,
-                  order: sorter.order || null,
+                  field: resolvedSorter?.columnKey
+                    ? String(resolvedSorter.columnKey)
+                    : null,
+                  order: resolvedSorter?.order ?? null,
                 });
               }}
             />
@@ -1059,7 +1065,8 @@ export default function UsersPage() {
                     dataSource={blacklistUsers.map((user) => ({
                       key: user.id,
                       ...user,
-                      balance: Number(user.balance),
+                      balance: Number(user.balance ?? 0),
+                      default_balance: Number(user.default_balance ?? 0),
                     }))}
                     rowKey="id"
                     loading={false}
@@ -1077,6 +1084,18 @@ export default function UsersPage() {
                           {t("users.total")} {total} {t("users.totalRecords")}
                         </span>
                       ),
+                    }}
+                    onChange={(pagination, filters, sorter) => {
+                      const resolvedSorter = Array.isArray(sorter)
+                        ? sorter.find((item) => item.order)
+                        : sorter;
+
+                      setSortInfo({
+                        field: resolvedSorter?.columnKey
+                          ? String(resolvedSorter.columnKey)
+                          : null,
+                        order: resolvedSorter?.order ?? null,
+                      });
                     }}
                   />
                 ) : (

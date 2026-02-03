@@ -20,6 +20,10 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search");
     const deleted = searchParams.get("deleted") === "true";
 
+    // Whitelist for sortable fields
+    const allowedSortFields = ["balance", "default_balance", "created_at", "name", "email", "role"];
+    const validatedSortField = sortField && allowedSortFields.includes(sortField) ? sortField : null;
+
     const conditions = [`deleted = ${deleted}`];
     const params = [];
     let paramIndex = 1;
@@ -45,8 +49,8 @@ export async function GET(req: NextRequest) {
        FROM users 
        ${whereClause} 
        ${
-         sortField
-           ? `ORDER BY ${sortField} ${sortOrder === "descend" ? "DESC" : "ASC"}`
+         validatedSortField
+           ? `ORDER BY ${validatedSortField} ${sortOrder === "descend" ? "DESC" : "ASC"}`
            : "ORDER BY created_at DESC"
        }
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
