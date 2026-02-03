@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { initDatabase } from '@/lib/db/client'
+import { ensureRuntimeInitialized } from '@/lib/runtime'
 
 let initialized = false
 
@@ -7,6 +8,7 @@ export async function GET() {
     if (!initialized) {
         try {
             await initDatabase()
+            ensureRuntimeInitialized()
             initialized = true
             return NextResponse.json({
                 success: true,
