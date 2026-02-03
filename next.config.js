@@ -3,6 +3,9 @@ const packageJson = require('./package.json')
 
 const nextConfig = {
     reactStrictMode: true,
+    experimental: {
+        instrumentationHook: true,
+    },
     env: {
         NEXT_PUBLIC_APP_VERSION: packageJson.version,
     },
