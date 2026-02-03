@@ -4,6 +4,7 @@ import { Pool, PoolClient } from 'pg'
 import { createClient } from '@vercel/postgres'
 import { query, getClient } from '@/lib/db/client'
 import { getModelInletCost } from '@/lib/utils/inlet-cost'
+import { ensureRuntimeInitialized } from '@/lib/runtime'
 
 const isVercel = process.env.VERCEL === '1'
 
@@ -60,6 +61,7 @@ async function getModelPrice(modelId: string): Promise<ModelPrice | null> {
 }
 
 export async function POST(req: Request) {
+    ensureRuntimeInitialized()
     const client = (await getClient()) as DbClient
     let pgClient: DbClient | null = null
 
