@@ -5,7 +5,7 @@ import { getModelInletCost } from '@/lib/utils/inlet-cost'
 import { ensureRuntimeInitialized } from '@/lib/runtime'
 
 export async function POST(req: Request) {
-    ensureRuntimeInitialized()
+    await ensureRuntimeInitialized()
     try {
         const data = await req.json()
         const user = await getOrCreateUser(data.user)

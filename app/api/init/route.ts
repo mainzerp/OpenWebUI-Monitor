@@ -8,7 +8,7 @@ export async function GET() {
     if (!initialized) {
         try {
             await initDatabase()
-            ensureRuntimeInitialized()
+            await ensureRuntimeInitialized()
             initialized = true
             return NextResponse.json({
                 success: true,

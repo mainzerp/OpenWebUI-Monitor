@@ -2,6 +2,6 @@
 export async function register() {
     if (process.env.NEXT_RUNTIME === 'nodejs') {
         const { ensureRuntimeInitialized } = await import('@/lib/runtime')
-        ensureRuntimeInitialized()
+        await ensureRuntimeInitialized()
     }
 }

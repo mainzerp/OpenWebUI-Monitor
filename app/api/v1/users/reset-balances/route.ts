@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     }
 
     try {
-        ensureRuntimeInitialized()
+        await ensureRuntimeInitialized()
         const resetDay = getConfiguredResetDay()
         const effectiveResetDay = getEffectiveResetDay(new Date())
         const lastReset = await getLastResetDate()
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     }
 
     try {
-        ensureRuntimeInitialized()
+        await ensureRuntimeInitialized()
         const body = await req.json().catch(() => ({}))
         const { userId, force } = body
 

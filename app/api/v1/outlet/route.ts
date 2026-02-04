@@ -61,7 +61,7 @@ async function getModelPrice(modelId: string): Promise<ModelPrice | null> {
 }
 
 export async function POST(req: Request) {
-    ensureRuntimeInitialized()
+    await ensureRuntimeInitialized()
     const client = (await getClient()) as DbClient
     let pgClient: DbClient | null = null
 
