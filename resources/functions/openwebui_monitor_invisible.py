@@ -1,245 +1,410 @@
-from typing import Optional, Callable, Any, Awaitable
-from pydantic import Field, BaseModel
-import requests
-import time
-from open_webui.utils.misc import get_last_assistant_message
-import json
-import os
+"""
+title: Usage Monitor (Invisible)
+author: VariantConst & OVINC CN / mainzerp
+git_url: https://github.com/mainzerp/OpenWebUI-Monitor.git
+version: 0.3.9
+requirements: httpx
+license: MIT
+"""
 
+import json
+import logging
+import os
+import time
+from typing import Any, Callable, Dict, Optional
+
+from httpx import AsyncClient, Timeout
+from pydantic import BaseModel, Field
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+TRANSLATIONS = {
+    "en": {
+        "request_failed": "Request failed: {error_msg}",
+        "insufficient_balance": (
+            "Insufficient balance: Current balance `{balance:.4f}`"
+        ),
+    },
+    "de": {
+        "request_failed": "Anfrage fehlgeschlagen: {error_msg}",
+        "insufficient_balance": (
+            "Unzureichendes Guthaben: Aktuelles Guthaben `{balance:.4f}`"
+        ),
+    },
+    "zh": {
+        "request_failed": "请求失败: {error_msg}",
+        "insufficient_balance": "余额不足: 当前余额 `{balance:.4f}`",
+    },
+}
+
+
+class CustomException(Exception):
+    pass
 
 
 class Filter:
     class Valves(BaseModel):
-        API_ENDPOINT: str = Field(
-            default="", description="The base URL for the API endpoint."
+        api_endpoint: str = Field(
+            default="",
+            description="Base URL of the OpenWebUI Monitor backend",
         )
-        API_KEY: str = Field(default="", description="API key for authentication.")
+        api_key: str = Field(
+            default="",
+            description="API key configured in the Monitor backend",
+        )
         priority: int = Field(
-            default=5, description="Priority level for the filter operations."
+            default=5,
+            description="Filter priority",
+        )
+        language: str = Field(
+            default="en",
+            description="Language: de, en or zh",
+        )
+        record_directory: str = Field(
+            default="/app/backend/data/record",
+            description="Directory where per-message usage records are stored",
         )
 
     def __init__(self):
         self.type = "filter"
         self.name = "OpenWebUI Monitor"
         self.valves = self.Valves()
-        self.outage = False
-        self.start_time = None
-        self.inlet_temp = None
 
-    def _prepare_request_body(self, body: dict) -> dict:
-        """Convert body and nested objects to JSON-serializable format"""
-        body_copy = body.copy()
-        
-        if 'metadata' in body_copy and 'model' in body_copy['metadata']:
-            if hasattr(body_copy['metadata']['model'], 'model_dump'):
-                body_copy['metadata']['model'] = body_copy['metadata']['model'].model_dump()
-        
-        return body_copy
+        # Stores the balance status for each user.
+        self.outage_map: Dict[str, bool] = {}
 
-    def _prepare_user_dict(self, __user__: dict) -> dict:
-        """将 __user__ 对象转换为可序列化的字典"""
-        user_dict = dict(__user__)  # 创建副本以避免修改原始对象
+        # Stores the start time for each user.
+        # A global start_time would cause problems with parallel requests.
+        self.start_times: Dict[str, float] = {}
 
-        # 如果存在 valves 且是 BaseModel 的实例，将其转换为字典
-        if "valves" in user_dict and hasattr(user_dict["valves"], "model_dump"):
-            user_dict["valves"] = user_dict["valves"].model_dump()
+        # Stores the inlet body for each user, needed to merge message history in outlet.
+        self.inlet_bodies: Dict[str, dict] = {}
 
-        return user_dict
+    def get_text(self, key: str, **kwargs: Any) -> str:
+        language = self.valves.language.lower()
 
-    def _modify_outlet_body(self, body: dict) -> dict:
-        body_modify = dict(body)
-        last_message = body_modify["messages"][-1]
-    
-        if "info" not in last_message and self.inlet_temp is not None:
-            body_modify["messages"][:-1] = self.inlet_temp["messages"]
-        return body_modify
+        if language not in TRANSLATIONS:
+            language = "en"
 
-    def inlet(
-        self, body: dict, user: Optional[dict] = None, __user__: dict = {}
+        text = TRANSLATIONS[language].get(
+            key,
+            TRANSLATIONS["en"].get(key, key),
+        )
+
+        return text.format(**kwargs) if kwargs else text
+
+    def _make_json_serializable(self, value: Any) -> Any:
+        """
+        Convert Pydantic objects and nested values into JSON-compatible data.
+        Supports both Pydantic v1 and v2.
+        """
+        if hasattr(value, "model_dump"):
+            return value.model_dump()
+
+        if hasattr(value, "dict"):
+            return value.dict()
+
+        if isinstance(value, dict):
+            return {
+                key: self._make_json_serializable(item)
+                for key, item in value.items()
+            }
+
+        if isinstance(value, list):
+            return [
+                self._make_json_serializable(item)
+                for item in value
+            ]
+
+        if isinstance(value, tuple):
+            return [
+                self._make_json_serializable(item)
+                for item in value
+            ]
+
+        return value
+
+    async def _send_request(
+        self,
+        client: AsyncClient,
+        url: str,
+        headers: dict,
+        payload: dict,
     ) -> dict:
-        self.start_time = time.time()
+        """
+        Send an HTTP request to the OpenWebUI Monitor backend.
+        """
+        json_payload = self._make_json_serializable(payload)
+
+        response = await client.post(
+            url=url,
+            headers=headers,
+            json=json_payload,
+        )
+
+        response.raise_for_status()
+        response_data = response.json()
+
+        if not response_data.get("success"):
+            error_message = self.get_text(
+                "request_failed",
+                error_msg=response_data,
+            )
+
+            logger.error(error_message)
+            raise CustomException(error_message)
+
+        return response_data
+
+    def _get_user_id(self, user: dict) -> str:
+        return str(user.get("id", "default"))
+
+    def _modify_outlet_body(
+        self,
+        body: dict,
+        inlet_body: Optional[dict],
+    ) -> dict:
+        """
+        Merge the original inlet messages into the outlet body if the response message
+        does not contain the info field (e.g. regenerated answers), so token
+        counting uses the original conversation context.
+        """
+        body_modified = dict(body)
+        messages = body_modified.get("messages") or []
+        inlet_body = inlet_body or {}
+
+        last_message = messages[-1] if messages else {}
+
+        if "info" not in last_message and inlet_body.get("messages"):
+            inlet_messages = inlet_body.get("messages", [])
+            body_modified["messages"][:-1] = inlet_messages
+
+        return body_modified
+
+    async def _emit_error(
+        self,
+        __event_emitter__: Optional[Callable],
+        description: str,
+    ) -> None:
+        if not __event_emitter__:
+            return
+
+        await __event_emitter__(
+            {
+                "type": "status",
+                "data": {
+                    "description": description,
+                    "done": True,
+                },
+            }
+        )
+
+    async def inlet(
+        self,
+        body: dict,
+        __metadata__: Optional[dict] = None,
+        __user__: Optional[dict] = None,
+    ) -> dict:
+        """
+        Run before the model request.
+        """
+        user = __user__ or {}
+
+        user_id = self._get_user_id(user)
+        self.start_times[user_id] = time.time()
+
+        # Keep the inlet body so the outlet can merge the original conversation.
+        self.inlet_bodies[user_id] = self._make_json_serializable(body)
+
+        endpoint = self.valves.api_endpoint.rstrip("/")
+
+        if not endpoint:
+            logger.warning(
+                "[Monitor] No API endpoint configured. "
+                "The request will not be blocked."
+            )
+            return body
+
+        client = AsyncClient(timeout=Timeout(30.0))
 
         try:
-            post_url = f"{self.valves.API_ENDPOINT}/api/v1/inlet"
-            headers = {"Authorization": f"Bearer {self.valves.API_KEY}"}
+            response_data = await self._send_request(
+                client=client,
+                url=f"{endpoint}/api/v1/inlet",
+                headers={
+                    "Authorization": f"Bearer {self.valves.api_key}",
+                    "Content-Type": "application/json",
+                },
+                payload={
+                    "user": user,
+                    "body": body,
+                },
+            )
 
-            # 使用 _prepare_user_dict 处理 __user__ 对象
-            user_dict = self._prepare_user_dict(__user__)
-            body_dict = self._prepare_request_body(body)
-            self.inlet_temp = body_dict
-            request_data = {
-                "user": user_dict,
-                "body": body_dict
-            }
-            response = requests.post(post_url, headers=headers, json=request_data)
+            balance = float(response_data.get("balance", 0))
+            self.outage_map[user_id] = balance <= 0
 
-            if response.status_code == 401:
-                return body
+            if self.outage_map[user_id]:
+                error_message = self.get_text(
+                    "insufficient_balance",
+                    balance=balance,
+                )
 
-            response.raise_for_status()
-            response_data = response.json()
-
-            if not response_data.get("success"):
-                error_msg = response_data.get("error", "未知错误")
-                error_type = response_data.get("error_type", "UNKNOWN_ERROR")
-                raise Exception(f"请求失败: [{error_type}] {error_msg}")
-
-            self.outage = response_data.get("balance", 0) <= 0
-            if self.outage:
-                raise Exception(f"余额不足: 当前余额 `{response_data['balance']:.4f}`")
+                logger.info(error_message)
+                raise CustomException(error_message)
 
             return body
 
-        except requests.exceptions.RequestException as e:
-            if (
-                isinstance(e, requests.exceptions.HTTPError)
-                and e.response.status_code == 401
-            ):
-                return body
-            raise Exception(f"网络请求失败: {str(e)}")
-        except Exception as e:
-            raise Exception(f"处理请求时发生错误: {str(e)}")
+        except CustomException:
+            # Balance errors must block the request.
+            raise
+
+        except Exception as error:
+            # Network and Monitor errors must not block OpenWebUI.
+            logger.exception(
+                "[Monitor] inlet error (non-blocking): %s",
+                error,
+            )
+            return body
+
+        finally:
+            await client.aclose()
 
     async def outlet(
         self,
         body: dict,
-        user: Optional[dict] = None,
-        __user__: dict = {},
-        __event_emitter__: Callable[[Any], Awaitable[None]] = None,
+        __metadata__: Optional[dict] = None,
+        __user__: Optional[dict] = None,
+        __event_emitter__: Optional[Callable] = None,
     ) -> dict:
-        if self.outage:
+        """
+        Run after the model response.
+        """
+        user = __user__ or {}
+
+        user_id = self._get_user_id(user)
+
+        # Do not send an outlet request if inlet blocked the request.
+        if self.outage_map.get(user_id, False):
             return body
+
+        endpoint = self.valves.api_endpoint.rstrip("/")
+
+        if not endpoint:
+            return body
+
+        client = AsyncClient(timeout=Timeout(30.0))
 
         try:
-            post_url = f"{self.valves.API_ENDPOINT}/api/v1/outlet"
-            headers = {"Authorization": f"Bearer {self.valves.API_KEY}"}
+            outlet_body = self._modify_outlet_body(
+                body,
+                self.inlet_bodies.get(user_id),
+            )
 
-            # 使用 _prepare_user_dict 处理 __user__ 对象
-            user_dict = self._prepare_user_dict(__user__)
-            body_dict = self._prepare_request_body(body)
-            body_modify = self._modify_outlet_body(body_dict)
-            request_data = {
-                "user": user_dict,
-                "body": body_modify
+            response_data = await self._send_request(
+                client=client,
+                url=f"{endpoint}/api/v1/outlet",
+                headers={
+                    "Authorization": f"Bearer {self.valves.api_key}",
+                    "Content-Type": "application/json",
+                },
+                payload={
+                    "user": user,
+                    "body": outlet_body,
+                },
+            )
+
+            # Build the usage statistics.
+            stats_data = {
+                "input_tokens": int(
+                    response_data.get("inputTokens", 0)
+                ),
+                "output_tokens": int(
+                    response_data.get("outputTokens", 0)
+                ),
+                "total_cost": float(
+                    response_data.get("totalCost", 0)
+                ),
+                "new_balance": float(
+                    response_data.get("newBalance", 0)
+                ),
             }
-            response = requests.post(post_url, headers=headers, json=request_data)
 
+            # Calculate elapsed time if available.
+            start_time = self.start_times.get(user_id)
 
-            if response.status_code == 401:
-                if __event_emitter__:
-                    await __event_emitter__(
-                        {
-                            "type": "status",
-                            "data": {
-                                "description": "API密钥验证失败",
-                                "done": True,
-                            },
-                        }
-                    )
-                return body
+            if start_time:
+                elapsed = time.time() - start_time
 
-            response.raise_for_status()
-            result = response.json()
+                stats_data["elapsed_time"] = elapsed
 
-            if not result.get("success"):
-                error_msg = result.get("error", "未知错误")
-                error_type = result.get("error_type", "UNKNOWN_ERROR")
-                raise Exception(f"请求失败: [{error_type}] {error_msg}")
+                output_tokens = stats_data["output_tokens"]
+                stats_data["tokens_per_sec"] = (
+                    output_tokens / elapsed if elapsed > 0 else 0
+                )
 
-            # 获取统计数据
-            input_tokens = result["inputTokens"]
-            output_tokens = result["outputTokens"]
-            total_cost = result["totalCost"]
-            new_balance = result["newBalance"]
-
-            print(f"user_dict: {json.dumps(user_dict, indent=4)}")
-            print(f"inlet body: {json.dumps(body, indent=4)}")
-
-            # 从 body 中获取消息 ID
+            # Persist the statistics for the given message.
             messages = body.get("messages", [])
-            message_id = messages[-1].get("id") if messages else None
+            message_id = (
+                messages[-1].get("id") if messages else None
+            )
 
-            if message_id:  # 需要 message_id
-                # 构建统计信息字典
-                stats_data = {
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "total_cost": total_cost,
-                    "new_balance": new_balance,
-                }
+            if message_id:
+                # Ensure the record directory exists.
+                os.makedirs(
+                    self.valves.record_directory,
+                    exist_ok=True,
+                )
 
-                # 计算耗时（如果有start_time）
-                if self.start_time:
-                    elapsed_time = time.time() - self.start_time
-                    stats_data["elapsed_time"] = elapsed_time
+                file_path = os.path.join(
+                    self.valves.record_directory,
+                    f"{message_id}.json",
+                )
 
-                    # 计算每秒输出速度，使用三元运算符避免除以零
-                    stats_data["tokens_per_sec"] = (
-                        output_tokens / elapsed_time if elapsed_time > 0 else 0
-                    )
+                # Persist the statistics as a JSON file.
+                with open(file_path, "w") as file:
+                    json.dump(stats_data, file, indent=4)
 
-                    # 指定目标目录路径
-                    directory_path = "/app/backend/data/record"
-
-                    # 确保目录存在
-                    os.makedirs(directory_path, exist_ok=True)
-
-                # 构建文件路径
-                file_path = os.path.join(directory_path, f"{message_id}.json")
-
-                # 将统计信息写入 JSON 文件
-                with open(file_path, "w") as f:
-                    json.dump(stats_data, f, indent=4)
+                logger.info(
+                    "[Monitor] user=%s message=%s recorded",
+                    user_id,
+                    message_id,
+                )
             else:
-                if __event_emitter__:
-                    await __event_emitter__(
-                        {
-                            "type": "status",
-                            "data": {
-                                "description": f"无法获取消息ID",
-                                "done": True,
-                            },
-                        }
-                    )
+                logger.warning(
+                    "[Monitor] user=%s: could not extract message ID",
+                    user_id,
+                )
 
             return body
 
-        except requests.exceptions.RequestException as e:
-            if (
-                isinstance(e, requests.exceptions.HTTPError)
-                and e.response.status_code == 401
-            ):
-                if __event_emitter__:
-                    await __event_emitter__(
-                        {
-                            "type": "status",
-                            "data": {
-                                "description": "API密钥验证失败",
-                                "done": True,
-                            },
-                        }
-                    )
-                return body
-            if __event_emitter__:
-                await __event_emitter__(
-                    {
-                        "type": "status",
-                        "data": {
-                            "description": f"网络请求失败: {str(e)}",
-                            "done": True,
-                        },
-                    }
-                )
-            raise Exception(f"网络请求失败: {str(e)}")
-        except Exception as e:
-            if __event_emitter__:
-                await __event_emitter__(
-                    {
-                        "type": "status",
-                        "data": {
-                            "description": f"错误: {str(e)}",
-                            "done": True,
-                        },
-                    }
-                )
-            raise Exception(f"处理请求时发生错误: {str(e)}")
+        except CustomException:
+            return body
+
+        except Exception as error:
+            # Outlet errors must not block the model response.
+            logger.exception(
+                "[Monitor] outlet error (non-blocking): %s",
+                error,
+            )
+
+            await self._emit_error(
+                __event_emitter__,
+                self.get_text(
+                    "request_failed",
+                    error_msg=str(error),
+                ),
+            )
+
+            return body
+
+        finally:
+            await client.aclose()
+
+            # Clean up request-specific state.
+            self.start_times.pop(user_id, None)
+            self.outage_map.pop(user_id, None)
+            self.inlet_bodies.pop(user_id, None)
