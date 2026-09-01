@@ -161,7 +161,7 @@ export default function Header() {
         setIsCheckingUpdate(true)
         try {
             const response = await fetch(
-                'https://api.github.com/repos/variantconst/openwebui-monitor/releases/latest'
+                'https://api.github.com/repos/mainzerp/OpenWebUI-Monitor/releases/latest'
             )
             const data = await response.json()
             const latestVersion = data.tag_name
@@ -193,7 +193,7 @@ export default function Header() {
 
                         const handleUpdate = () => {
                             window.open(
-                                'https://github.com/VariantConst/OpenWebUI-Monitor/releases/latest',
+                                'https://github.com/mainzerp/OpenWebUI-Monitor/releases/latest',
                                 '_blank'
                             )
                             handleClose()

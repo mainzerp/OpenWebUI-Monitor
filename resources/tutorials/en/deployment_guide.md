@@ -8,7 +8,7 @@ OpenWebUI Monitor is designed to work alongside [OpenWebUI](https://github.com/o
 
 1. Click the button below to fork this repository and deploy it to Vercel with one click.
 
-[![Deploy on Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FVariantConst%2FOpenWebUI-Monitor&project-name=openwebui-monitor&repository-name=OpenWebUI-Monitor)
+[![Deploy on Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmainzerp%2FOpenWebUI-Monitor&project-name=openwebui-monitor&repository-name=OpenWebUI-Monitor)
 
 2. Configure the environment variables. Go to the **Settings** section of your project on Vercel, open **Environment Variables**, and add the following:
 
@@ -37,7 +37,7 @@ The deployment is now complete. Note the domain assigned by Vercel or add a cust
 1. Clone this repository:
 
 ```bash
-git clone https://github.com/VariantConst/OpenWebUI-Monitor.git
+git clone https://github.com/mainzerp/OpenWebUI-Monitor.git
 ```
 
 2. Configure environment variables:
@@ -61,7 +61,7 @@ The deployment is now complete! Publish the site to the public as needed. To mod
 <details>
 <summary><strong>Method 1 (Recommended): Explicit Billing Information Display Function</strong></summary>
 
-1. Open the Functions page in the OpenWebUI Admin Panel. Click + to create a new function, then paste the code from [this function](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor.py) and save it.
+1. Open the Functions page in the OpenWebUI Admin Panel. Click + to create a new function, then paste the code from [this function](https://github.com/mainzerp/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor.py) and save it.
 
 2. Fill in the configuration:
 
@@ -78,11 +78,11 @@ The deployment is now complete! Publish the site to the public as needed. To mod
 <details>
 <summary><strong>Method 2: Implicit (Manually Triggered) Billing Information Display Function</strong></summary>
 
-If you prefer implicit billing display, use [this function](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor_invisible.py) instead. Follow the same steps to enable and configure the function globally. Additionally, you'll need to install an Action function plugin.
+If you prefer implicit billing display, use [this function](https://github.com/mainzerp/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor_invisible.py) instead. Follow the same steps to enable and configure the function globally. Additionally, you'll need to install an Action function plugin.
 
 - Action Function
 
-Similarly, add a new function and paste the code from the [Action function](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/functions/get_usage_button.py), save it, enable it, and configure it globally. This function will handle the billing information display options that were previously managed by the billing plugin.
+Similarly, add a new function and paste the code from the [Action function](https://github.com/mainzerp/OpenWebUI-Monitor/blob/main/resources/functions/get_usage_button.py), save it, enable it, and configure it globally. This function will handle the billing information display options that were previously managed by the billing plugin.
 
 - Usage
 

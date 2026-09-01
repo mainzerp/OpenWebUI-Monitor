@@ -4,13 +4,11 @@
 
 # OpenWebUI Monitor
 
-**English** / [简体中文](./resources/tutorials/zh-cn/README_zh.md) / [Español](./resources/tutorials/es/README_es.md)
-
 </div>
 
-A monitoring dashboard for OpenWebUI that tracks usage and manages user balances. Simply add a [function](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor.py) to OpenWebUI to view user activity and balances in a unified panel.
+A monitoring dashboard for OpenWebUI that tracks usage and manages user balances. Simply add a [function](https://github.com/mainzerp/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor.py) to OpenWebUI to view user activity and balances in a unified panel.
 
-> **Note**: If you are using OpenWebUI version 0.5.8 or above, please make sure to update the [function](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor.py) to the latest version.
+> **Note**: If you are using OpenWebUI version 0.5.8 or above, please make sure to update the [function](https://github.com/mainzerp/OpenWebUI-Monitor/blob/main/resources/functions/openwebui_monitor.py) to the latest version.
 
 ## Features
 
@@ -21,7 +19,7 @@ A monitoring dashboard for OpenWebUI that tracks usage and manages user balances
 
 ## Deployment
 
-Supports one-click deployment on Vercel [![Deploy on Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FVariantConst%2FOpenWebUI-Monitor&project-name=openwebui-monitor&repository-name=openwebui-monitor&env=OPENWEBUI_DOMAIN,OPENWEBUI_API_KEY,ACCESS_TOKEN,API_KEY) and Docker deployment. **See [Deployment Guide](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/tutorials/en/deployment_guide.md) for details. See [Deployment Guide](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/tutorials/en/deployment_guide.md) for details. See [Deployment Guide](https://github.com/VariantConst/OpenWebUI-Monitor/blob/main/resources/tutorials/en/deployment_guide.md) for details.**
+Supports one-click deployment on Vercel [![Deploy on Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmainzerp%2FOpenWebUI-Monitor&project-name=openwebui-monitor&repository-name=openwebui-monitor&env=OPENWEBUI_DOMAIN,OPENWEBUI_API_KEY,ACCESS_TOKEN,API_KEY) and Docker deployment. **See [Deployment Guide](https://github.com/mainzerp/OpenWebUI-Monitor/blob/main/resources/tutorials/en/deployment_guide.md) for details.**
 
 ## Updates
 
@@ -85,4 +83,4 @@ OpenWebUI Monitor will only start tracking a user’s information after the user
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=VariantConst/OpenWebUI-Monitor&type=Date)](https://star-history.com/#VariantConst/OpenWebUI-Monitor&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=mainzerp/OpenWebUI-Monitor&type=Date)](https://star-history.com/#mainzerp/OpenWebUI-Monitor&Date)

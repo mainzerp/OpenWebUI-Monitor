@@ -20,7 +20,7 @@ export default function HomePage() {
         const checkUpdate = async () => {
             try {
                 const response = await fetch(
-                    'https://api.github.com/repos/variantconst/openwebui-monitor/releases/latest'
+                    'https://api.github.com/repos/mainzerp/OpenWebUI-Monitor/releases/latest'
                 )
                 const data = await response.json()
                 const latestVer = data.tag_name
@@ -46,7 +46,7 @@ export default function HomePage() {
 
     const handleUpdate = () => {
         window.open(
-            'https://github.com/VariantConst/OpenWebUI-Monitor/releases/latest',
+            'https://github.com/mainzerp/OpenWebUI-Monitor/releases/latest',
             '_blank'
         )
         setIsUpdateVisible(false)
@@ -236,7 +236,7 @@ export default function HomePage() {
                     className="py-8 text-center"
                 >
                     <a
-                        href="https://github.com/VariantConst/OpenWebUI-Monitor"
+                        href="https://github.com/mainzerp/OpenWebUI-Monitor"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex p-2 text-slate-400 hover:text-slate-600 transition-colors"
