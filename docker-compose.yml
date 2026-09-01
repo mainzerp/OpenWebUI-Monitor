@@ -20,7 +20,7 @@ services:
         profiles:
             - ${POSTGRES_HOST:+never}
             - ${POSTGRES_HOST:-default}
-        image: postgres:15-alpine
+        image: postgres:17-alpine
         expose:
             - '5432'
         environment:
